@@ -1,5 +1,13 @@
 import numpy as np
 
+def split_df_by_asset(df, drop_label_column = True, num_columns_per_asset = 3):
+    if(drop_label_column):
+        df = df.drop(columns = ['label'])
+    asset_dfs = []
+    for i in range(0, len(df.columns), num_columns_per_asset):
+        asset_dfs.append(df[df.columns[i : i + num_columns_per_asset]])
+    return asset_dfs
+
 def train_test_split_lstm(stocks, prediction_time=1, test_data_size=450, unroll_length=50):
     """
         Split the data set into training and testing feature for Long Short Term Memory Model
