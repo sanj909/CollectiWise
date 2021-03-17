@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import pywt #after running pip install PyWavelets (https://github.com/PyWavelets/pywt, https://pywavelets.readthedocs.io/en/latest/)
+from sklearn.preprocessing import StandardScaler
+from skimage.restoration import denoise_wavelet
 
 '''
 The denoising steps are the following : https://www.kaggle.com/theoviel/denoising-with-direct-wavelet-transform
@@ -62,32 +64,34 @@ def RMSE(raw, denoised): #Google 'root mean square deviation' for formula; equat
     ss = np.sum(np.power(raw - denoised, 2))
     return np.sqrt(ss)
 
-#Rescaling series to ensure consistent performance of denoising function
 #https://stats.stackexchange.com/questions/46429/transform-data-to-desired-mean-and-standard-deviation
-def normalise(x, new_mean, new_std):
+def standardise(x, new_mean, new_std):
     return new_mean + (x - np.mean(x))*(new_std/np.std(x))
 
+#Rescaling series to ensure consistent performance of denoising function
 #The new mean should roughly be between 10 and 100, for most assets, according to the block below.
+#denoise function doesn't work with mean 0 variance 1 data for some reason
 def rescale(x, orgnl_mean, orgnl_std):
     if 1 < orgnl_mean <= 10:
-        x = normalise(x, np.power(orgnl_mean, 2), np.power(orgnl_std, 2))
+        x = standardise(x, np.power(orgnl_mean, 2), np.power(orgnl_std, 2))
     elif 100 < orgnl_mean:
-        x = normalise(x, np.sqrt(orgnl_mean), np.sqrt(orgnl_std))
+        x = standardise(x, np.sqrt(orgnl_mean), np.sqrt(orgnl_std))
     elif orgnl_mean < 1:
-        x = normalise(x, np.power(100, orgnl_mean), np.power(100, orgnl_std))
+        x = standardise(x, np.power(100, orgnl_mean), np.power(100, orgnl_std))
     elif orgnl_mean < 0.1:
-        x = normalise(x, np.power(10000, orgnl_mean), np.power(10000, orgnl_std))
+        x = standardise(x, np.power(10000, orgnl_mean), np.power(10000, orgnl_std))
     return x
 
 def gridSearch(x, orgnl_mean, orgnl_std):
     result = [-100000, '', 0] #SNR - RMSE, wavelet, level
     for w in pywt.wavelist(kind='discrete'):
         for l in range(2, 5):
-            x = rescale(x, orgnl_mean, orgnl_std)
+            #x = rescale(x, orgnl_mean, orgnl_std)
+            x = standardise(x, 0, 1)
             y = denoise(x, w, l)
 
-            x = normalise(x, orgnl_mean, orgnl_std)
-            y = normalise(y, orgnl_mean, orgnl_std)
+            #x = standardise(x, orgnl_mean, orgnl_std)
+            #y = standardise(y, orgnl_mean, orgnl_std)
 
             if (SNR(x, y) - RMSE(x, y)) > result[0]:
                 result[0] = (SNR(x, y) - RMSE(x, y)); result[1] = w; result[2] = l
@@ -100,14 +104,58 @@ def optDenoise(x):
     orgnl_mean = np.mean(x); orgnl_std = np.std(x)
 
     params = gridSearch(x, orgnl_mean, orgnl_std)
-    x = rescale(x, orgnl_mean, orgnl_std)
+    #x = rescale(x, orgnl_mean, orgnl_std)
     y = denoise(x, params[1], params[2])
 
-    #Normalise back to original distribution
-    x = normalise(x, orgnl_mean, orgnl_std)
-    y = normalise(y, orgnl_mean, orgnl_std)
+    #standardise back to original distribution
+    #x = standardise(x, orgnl_mean, orgnl_std)
+    #y = standardise(y, orgnl_mean, orgnl_std)
 
     return y
 
+def gridSearch_v2(x, metric):
+    #metric=1: maximise SNR - RMSE
+    #metric=2: maximise SNR
+    #metric=3: minimise RMSE
+    result = ['', 0, '', '', 1000000, 0, -1000000] #wavelet, level, mode, method, RMSE, SNR, SNR-RMSE
 
+    #for w in [x for x in pywt.wavelist(kind='discrete') if x.startswith('coif')]:
+    for w in pywt.wavelist(kind='discrete'):
+        for l in range(1, 5):
+            for m in ['hard', 'soft']:
+                for method in ['BayesShrink', 'VisuShrink']:
+                    y = denoise_wavelet(x, wavelet=w, mode=m, wavelet_levels=l, method=method, rescale_sigma=True)
 
+                    snr = SNR(x, y)
+                    rmse = RMSE(x, y)
+
+                    if metric == 1:
+                        if (snr - rmse) > result[6]:
+                            result[6] = (snr - rmse); result[0] = w; result[1] = l; result[2] = m; result[3] = method
+                    elif metric == 2:
+                        if (snr) > result[5]:
+                            result[5] = (snr); result[0] = w; result[1] = l; result[2] = m; result[3] = method
+                    elif metric == 3:
+                        if (rmse) < result[4]:
+                            result[4] = (rmse); result[0] = w; result[1] = l; result[2] = m; result[3] = method
+
+    return result
+
+def optDenoise_v2(x):
+    x = np.array(x)
+    original_mean = np.mean(x)
+
+    #In the paper they used zero-mean normalization, which means the series is just shifted vertically downwards by its mean.
+    x = x - np.mean(x) #equivalently, standardise(x, 0, np.std(x))
+
+    params = gridSearch_v2(x, 1)
+
+    #See https://www.youtube.com/watch?v=HSG-gVALa84 
+    y = denoise_wavelet(x, wavelet=params[0], wavelet_levels=params[1], mode=params[2], method=params[3], rescale_sigma=True)
+    #method: 'BayesShrink' or 'VisuShrink'
+    #Most of the time, the denoised series is basically identical to the original
+    #  VisuShrink doesn't capture price peaks, and these obviously can't be noise.
+
+    y = y + original_mean
+    
+    return y
