@@ -3,35 +3,65 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import pywt 
 
+'''
 #Importing stock data 
 import yfinance as yf
 from datetime import date,datetime,timedelta
-ticker = 'TSLA'
+ticker = '^GSPC'
 first_day = datetime(2000, 1, 3)
 last_day = datetime(2019, 7, 1)
 data = yf.Ticker(ticker).history(interval = '1d', start=first_day, end=last_day)
 data.reset_index(inplace=True)
+'''
 
 '''
 #Importing our crypto data
-ticker = 'GNOUSD' #Try QTUMUSD, XBTEUR, ETCUSD, ZECXBT, GNOXBT, XBTEUR, LTCEUR, XBTUSD, EOSXBT, EOSETH, GNOUSD
+ticker = 'QTUMUSD' #Try QTUMUSD, XBTEUR, ETCUSD, ZECXBT, GNOXBT, XBTEUR, LTCEUR, XBTUSD, EOSXBT, EOSETH, GNOUSD
 data = pd.read_csv('/Users/Sanjit/Google Drive/CollectiWise/Data/high_low.csv') #change this
 data = data[data['asset'] == ticker]
 data.reset_index(inplace=True, drop=True)
 '''
 
-from waveletDenoising import denoise, SNR, RMSE, optDenoise #Store this file in the same folder as 'waveletDenoising.py'
+data = pd.read_csv('/Users/Sanjit/Repos/CollectiWise/formatted_features.csv')
+column = 'e_XBTUSD avg_price'
+data = data[column]
 
-x = np.array(data.Close)
-y = optDenoise(x)
+from waveletDenoising import denoise, SNR, RMSE, optDenoise, standardise, gridSearch_v2, optDenoise_v2 #Store this file in the same folder as 'waveletDenoising.py'
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from skimage.restoration import denoise_wavelet
+
+#x = np.array(data.Close)
+x = np.array(data)
+original_mean = np.mean(x)
+original_std = np.std(x)
+
+#In the paper they used zero-mean normalization, which means the series is just shifted vertically downwards by its mean.
+x = x - np.mean(x) #equivalently, standardise(x, 0, np.std(x))
+
+#x = standardise(x, 0, 1) #N(0,1) standardisation
+
+#See https://www.youtube.com/watch?v=HSG-gVALa84 
+#y = denoise_wavelet(x, wavelet='coif3', mode='hard', wavelet_levels=3, method='BayesShrink', rescale_sigma=True)
+#method: 'BayesShrink' or 'VisuShrink'
+#Most of the time, the denoised series is basically identical to the original. Problem is worse when we standardise to N(0, 1)
+#VisuShrink doesn't capture price peaks, and these obviously can't be noise.
+
+y = optDenoise_v2(x) 
+
+#x = x + original_mean
+#y = y + original_mean
+#x = standardise(x, original_mean, original_std)
+#y = standardise(x, original_mean, original_std)
 
 print("SNR: ", SNR(x, y))
 print("RMSE: ", RMSE(x, y))
 
-plt.plot(data.index, data.Close, color='Green')
+plt.plot(data.index, x, color='Green')
 plt.plot(data.index, y, color='Red')
-plt.title(ticker)
+#plt.title(ticker)
+plt.title(column)
 plt.show()
+
 
 '''
 We see strange behaviour when the prices are very large (XBTEUR, XBTUSD, in 1000s) and very small (GNOXBT, EOSXBT, in 0.001s)
