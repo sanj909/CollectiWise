@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 def split_df_by_asset(df, drop_label_column = True, num_columns_per_asset = 3):
     if(drop_label_column):
@@ -46,3 +47,22 @@ def unroll(data, sequence_length=24):
     for index in range(len(data) - sequence_length):
         result.append(data[index: index + sequence_length])
     return np.asarray(result)
+
+
+def standardise_df(df):
+    scalers = [] #save the scalers so we can inverse_transform later
+    for column in df.columns:
+        x = np.array(df[column])
+        scaler = StandardScaler()
+        scaler.fit(x.reshape(len(x), 1))
+        df[column] = scaler.transform(x.reshape(len(x), 1))
+        scalers.append(scaler)
+    return df, scalers
+
+
+def reroll(array3d, unroll_length):
+    array2d = array3d[0]
+    for i in range(len(array3d)):
+        next_row = array3d[i][unroll_length-1]
+        array2d = np.vstack((array2d, next_row))
+    return array2d

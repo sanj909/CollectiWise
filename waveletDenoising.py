@@ -113,14 +113,15 @@ def optDenoise(x):
 
     return y
 
+#grid search best parameters for denoising function. 
 def gridSearch_v2(x, metric):
     #metric=1: maximise SNR - RMSE
     #metric=2: maximise SNR
     #metric=3: minimise RMSE
     result = ['', 0, '', '', 1000000, 0, -1000000] #wavelet, level, mode, method, RMSE, SNR, SNR-RMSE
 
-    #for w in [x for x in pywt.wavelist(kind='discrete') if x.startswith('coif')]:
-    for w in pywt.wavelist(kind='discrete'):
+    #Only consider haar, db, sym, coif wavelet basis functions, as these are relatively suitable for financial data
+    for w in [wavelet for wavelet in pywt.wavelist(kind='discrete') if wavelet.startswith(('haar', 'db', 'sym', 'coif'))]:
         for l in range(1, 5):
             for m in ['hard', 'soft']:
                 for method in ['BayesShrink', 'VisuShrink']:
@@ -143,19 +144,33 @@ def gridSearch_v2(x, metric):
 
 def optDenoise_v2(x):
     x = np.array(x)
-    original_mean = np.mean(x)
+    #original_mean = np.mean(x)
 
     #In the paper they used zero-mean normalization, which means the series is just shifted vertically downwards by its mean.
-    x = x - np.mean(x) #equivalently, standardise(x, 0, np.std(x))
+    #x = x - np.mean(x) #equivalently, standardise(x, 0, np.std(x))
 
-    params = gridSearch_v2(x, 1)
+    #grid search best parameters for denoising function. 
+    #maximise SNR-RMSE, as they recommended in the paper.
+    params = gridSearch_v2(x, 1) 
 
     #See https://www.youtube.com/watch?v=HSG-gVALa84 
     y = denoise_wavelet(x, wavelet=params[0], wavelet_levels=params[1], mode=params[2], method=params[3], rescale_sigma=True)
-    #method: 'BayesShrink' or 'VisuShrink'
-    #Most of the time, the denoised series is basically identical to the original
-    #  VisuShrink doesn't capture price peaks, and these obviously can't be noise.
+    #y = denoise_wavelet(x, wavelet='coif3', wavelet_levels=3, mode='hard', method='BayesShrink', rescale_sigma=True) #paramters used in paper
 
-    y = y + original_mean
+    '''
+    method: 'BayesShrink' or 'VisuShrink'
+    Most of the time, the denoised series is basically identical to the original
+    #  VisuShrink doesn't capture price peaks, and these obviously can't be noise.
+    '''
+    #y = y + original_mean
     
     return y
+
+#takes a numerical dataframe as input
+#treats each column as a series, denoises each of these series
+#stitches back together and returns a dataframe
+def denoise_df(df):
+    for column in df.columns:
+        x = np.array(df[column])
+        df[column] = optDenoise_v2(x)
+    return df
