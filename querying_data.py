@@ -64,20 +64,21 @@ class SQL:
         self.query.append(query)
         self.client.query(query)
         
-    def convert_to_features(self, target_asset):
+    def convert_to_features(self, features = 'avg_price,volume,std_price,label'):
         query = """
-                    DECLARE target_asset STRING DEFAULT '"""+str(target_asset)+"""';
+                #DECLARE target_asset STRING DEFAULT 'ETHUSD';
 
-                    CALL `development-302415.machine_learning.pivot` (
-                    'development-302415.machine_learning.sorted_by_interval','development-302415.machine_learning.assets_to_features', ['time_stamp'], 'asset','[STRUCT(avg_price,volume,std_price)]',1000,'ANY_VALUE','');
-
-                    CREATE OR REPLACE TABLE `development-302415.machine_learning.assets_to_features` AS
-                    SELECT features.*, labels.label FROM `development-302415.machine_learning.assets_to_features` AS features
-                    INNER JOIN `development-302415.machine_learning.sorted_by_interval` AS labels
-                    ON features.time_stamp = labels.time_stamp AND labels.asset = target_asset
-                    ORDER BY time_stamp;
-                    """
-            
+                CALL `development-302415.machine_learning.pivot` (
+                'development-302415.machine_learning.sorted_by_interval','development-302415.machine_learning.assets_to_features', ['time_stamp'], 'asset','[STRUCT("""+features+""")]',1000,'ANY_VALUE','');
+        
+        
+                #CREATE OR REPLACE TABLE `development-302415.machine_learning.assets_to_features` AS
+                #SELECT features.*, labels.label FROM `development-302415.machine_learning.assets_to_features` AS features
+                #INNER JOIN `development-302415.machine_learning.sorted_by_interval` AS labels
+                #ON features.time_stamp = labels.time_stamp AND labels.asset = target_asset
+                #ORDER BY time_stamp;
+                """
+                    
         self.query.append(query)
         self.client.query(query)
         
@@ -101,7 +102,7 @@ class SQL:
         self.data.to_csv(path)
          
     
-    def unnest(self, columns_prefix = 'e_', na_fillers = {'avg_price':'ffill','volume':0,'std_price':0}, dropna = False):
+    def unnest(self, columns_prefix = 'e_', na_fillers = {'avg_price':'ffill','volume':0,'std_price':0,'label':0}, dropna = False, merge_labels = True, label_name = 'label'):
         self.data = self.data.applymap(lambda x: x if x != '[]' else '[{}]')
         
         
@@ -127,11 +128,30 @@ class SQL:
 
                 self.data.drop(columns = column, inplace = True)
             
-            if dropna:
-                self.data.dropna(axis = 0, inplace = True)
+        #Puts all the '<asset> label' columns to the right
+        if merge_labels:
+            #print(self.data[[ i for i in list(self.data.columns) if i[-len(label_name):] == label_name]])
+            labels = self.data[[ i for i in list(self.data.columns) if i[-len(label_name):] == label_name]].values.tolist()
+                
+            #print(labels)
+            self.data.drop(columns = [ i for i in list(self.data.columns) if i[-len(label_name):] == label_name], inplace = True)
+            self.data[label_name] = labels
+        else:
+            self.data = self.data[[ i for i in list(self.data.columns) if i[-len(label_name):] != label_name]+[ i for i in list(self.data.columns) if i[-len(label_name):] == label_name]]
+
+
+        if dropna:
+            self.data.dropna(axis = 0, inplace = True)
 
         return self.data
-
+    
+    def create_targets(self, targets = ['high','low'], merge_labels = True):
+        for target in targets:
+            df = self.data[[ i for i in list(self.data.columns) if i[-len(target):] == target]]
+            df = df.rolling()
+        
+        
+        
     def summarize(self, na_threshold = None):
         print('------------------------------------------------')
         if na_threshold != None:
@@ -163,21 +183,24 @@ class SQL:
         self.data = self.data[[i for i in self.data.columns.values if list(filter(i.startswith, assets)) == []]]
         self.data.dropna(inplace = True, axis = 0) 
 
-
+dir = 'cloudshell_open/CollectiWise/'
 sql = SQL()
-#sql.aggregate_to_intervals(7200)
-#sql.convert_to_features('ETHUSD')
-#sql.get_table('machine_learning.assets_to_features', csv_name = 'assets_to_features.csv')
-#sql.data.drop(columns = ['time_stamp'], inplace=True)
-#print(sql.data)
-#sql.load_csv('assets_to_features.csv')
-#sql.unnest()
-#sql.save_csv('features_df.csv')
-sql.load_csv('features_df.csv')
 
+sql.aggregate_to_intervals(7200)
+sql.convert_to_features()
+sql.get_table('machine_learning.assets_to_features', csv_name = dir+'assets_to_features.csv')
+sql.data.drop(columns = ['time_stamp'], inplace=True)
+
+sql.load_csv(dir+'assets_to_features.csv')
+sql.unnest(merge_labels=True)
+sql.save_csv(dir+'features_df.csv')
+
+sql.load_csv(dir+'features_df.csv')
 sql.summarize(na_threshold=50)
 sql.dropna(threshold=50)
 sql.summarize()
 sql.data.set_index('label', inplace = True)
+sql.save_csv(dir+'formatted_features.csv')
 
-sql.save_csv('formatted_features.csv')
+sql.load_csv(dir+'formatted_features.csv')
+print(sql.data)
