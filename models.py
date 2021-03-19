@@ -24,3 +24,11 @@ def build_att_lstm_model(lstm_input_dim, lstm_output_dim, dense_output_dim, retu
     #model.add(Activation('softmax'))
     model.add(layers.Activation('linear'))
     return model
+
+
+def lstm(learning_rate, window_length, n_features):
+    model = tf.keras.Sequential()
+    model.add(layers.LSTM(units = 25, activation='relu', input_shape=(window_length, n_features)))
+    #model.add(layers.Dropout(0.2))
+    model.add(layers.Dense(units = n_features, activation='linear')) #We want the model to output a single number, it's prediction of bid1
+    return model

@@ -58,3 +58,11 @@ def standardise_df(df):
         df[column] = scaler.transform(x.reshape(len(x), 1))
         scalers.append(scaler)
     return df, scalers
+
+
+def reroll(array3d, unroll_length):
+    array2d = array3d[0]
+    for i in range(len(array3d)):
+        next_row = array3d[i][unroll_length-1]
+        array2d = np.vstack((array2d, next_row))
+    return array2d
