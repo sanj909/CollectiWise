@@ -1,0 +1,2 @@
+model_checkpoint_path: "test_model_cp_seed1_max_iter300_unroll_length50_lr0.001_model_typelstm_stock_idx0.ckpt"
+all_model_checkpoint_paths: "test_model_cp_seed1_max_iter300_unroll_length50_lr0.001_model_typelstm_stock_idx0.ckpt"
