@@ -102,7 +102,7 @@ class SQL:
         self.data.to_csv(path)
          
     
-    def unnest(self, columns_prefix = 'e_', na_fillers = {'avg_price':'ffill','volume':0,'std_price':0,'label':0}, dropna = False, merge_labels = True, label_name = 'label'):
+    def unnest(self, columns_prefix = 'e_', na_fillers = {'avg_price':'ffill','volume':0,'std_price':0,'label':0,'high':'$avg_price','low':'$avg_price','open':'$avg_price','close':'$avg_price'}, dropna = False, merge_labels = True, label_name = 'label'):
         self.data = self.data.applymap(lambda x: x if x != '[]' else '[{}]')
         
         
@@ -117,9 +117,15 @@ class SQL:
                 for feature in serie.columns.values:
                     try:
                         if type(na_fillers[feature]) == int:
-                            self.data[column+' '+feature] = serie[feature].fillna(value = na_fillers[feature])
+                            serie[feature] = serie[feature].fillna(value = na_fillers[feature])
+                            self.data[column+' '+feature] = serie[feature]
                         elif type(na_fillers[feature]) == str:
-                            self.data[column+' '+feature] = serie[feature].fillna(method = na_fillers[feature])
+                            if na_fillers[feature][0] == '$':
+                                serie[feature] = serie[feature].fillna(serie[na_fillers[feature][1:]])
+                                self.data[column+' '+feature] = serie[feature]
+                            else:
+                                serie[feature] = serie[feature].fillna(method = na_fillers[feature])                      
+                                self.data[column+' '+feature] = serie[feature]
                         else:
                             raise KeyError('Fill method isn\'t int or string for '+feature)
 
@@ -186,17 +192,19 @@ class SQL:
 dir = 'cloudshell_open/CollectiWise/'
 sql = SQL()
 
-sql.aggregate_to_intervals(7200)
-sql.convert_to_features()
+#sql.aggregate_to_intervals(7200)
+#sql.convert_to_features(features = 'avg_price,volume,std_price,label,high,low')
 sql.get_table('machine_learning.assets_to_features', csv_name = dir+'assets_to_features.csv')
 sql.data.drop(columns = ['time_stamp'], inplace=True)
 
+
 sql.load_csv(dir+'assets_to_features.csv')
 sql.unnest(merge_labels=True)
+print(sql.data.columns.values)
 sql.save_csv(dir+'features_df.csv')
 
 sql.load_csv(dir+'features_df.csv')
-sql.summarize(na_threshold=50)
+#sql.summarize(na_threshold=50)
 sql.dropna(threshold=50)
 sql.summarize()
 sql.data.set_index('label', inplace = True)
