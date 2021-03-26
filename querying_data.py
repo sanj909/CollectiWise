@@ -193,7 +193,7 @@ dir = 'cloudshell_open/CollectiWise/'
 sql = SQL()
 
 #sql.aggregate_to_intervals(7200)
-#sql.convert_to_features(features = 'avg_price,volume,std_price,label,high,low')
+sql.convert_to_features(features = 'avg_price,volume,std_price,label,high,low')
 sql.get_table('machine_learning.assets_to_features', csv_name = dir+'assets_to_features.csv')
 sql.data.drop(columns = ['time_stamp'], inplace=True)
 
