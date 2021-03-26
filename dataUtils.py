@@ -61,8 +61,8 @@ def standardise_df(df):
 
 
 def reroll(array3d, unroll_length):
-    array2d = array3d[0]
-    for i in range(len(array3d)):
+    array2d = array3d[0][unroll_length-1]
+    for i in range(1, len(array3d)):
         next_row = array3d[i][unroll_length-1]
         array2d = np.vstack((array2d, next_row))
     return array2d
